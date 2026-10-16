@@ -24,7 +24,7 @@ impl Coefficients {
     }
 
     /// Magnitude of the resonator's response at a frequency.
-    /// The resonator's transfer function is a / (1 - b·z⁻¹ - c·z⁻²).
+    /// The resonator's transfer function is a / (1 - b * z ^ (-1) - c * z ^ (-2)).
     fn resonator_magnitude(&self, frequency: f64, sample_rate: f64) -> f64 {
         let omega = 2.0 * PI * frequency / sample_rate;
         let real = 1.0 - self.b * omega.cos() - self.c * (2.0 * omega).cos();

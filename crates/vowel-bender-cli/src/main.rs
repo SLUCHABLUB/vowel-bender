@@ -8,7 +8,7 @@ use vowel_bender::synthetic::{self, SyntheticBankSettings};
 #[derive(Parser)]
 #[command(
     name = "vowel-bender",
-    about = "Moves a voicebank's vowels toward another language's vowels"
+    about = "Moves the vowels in a voicebank toward the vowels in another language"
 )]
 struct Arguments {
     #[command(subcommand)]

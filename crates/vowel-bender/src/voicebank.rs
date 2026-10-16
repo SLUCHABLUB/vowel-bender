@@ -22,7 +22,7 @@ pub struct Voicebank {
 }
 
 impl Voicebank {
-    /// Writes 16-bit mono wavs, a UTF-8 oto.ini, character.txt, and a character.yaml that tells OpenUtau to read them as UTF-8.
+    /// Writes 16-bit mono WAV files, a UTF-8 oto.ini, character.txt, and a character.yaml that tells OpenUtau to read them as UTF-8.
     ///
     /// # Errors
     ///

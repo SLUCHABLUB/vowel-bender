@@ -1,4 +1,4 @@
-//! Reading and writing oto.ini, a voicebank's sample index.
+//! Reading and writing oto.ini, the sample index of a voicebank.
 //!
 //! Each line has the form `file.wav=alias,offset,consonant,cutoff,preutterance,overlap`, with times in milliseconds.
 //! Every line keeps its original bytes, and only edited lines are encoded again.
