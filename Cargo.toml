@@ -1,0 +1,17 @@
+[workspace]
+members = ["crates/vowel-bender", "crates/vowel-bender-cli"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license-file = "LICENSE"
+
+[workspace.dependencies]
+vowel-bender = { path = "crates/vowel-bender" }
+clap = { version = "4.5", features = ["derive"] }
+encoding_rs = "0.8"
+hound = "3.5"
+serde = { version = "1", features = ["derive"] }
+tempfile = "3"
+toml = "0.8"
