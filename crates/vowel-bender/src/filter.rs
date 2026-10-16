@@ -44,6 +44,7 @@ pub struct Resonator {
 }
 
 impl Resonator {
+    #[must_use]
     pub fn new(frequency: f64, bandwidth: f64, sample_rate: f64) -> Self {
         Self {
             sample_rate,
@@ -54,10 +55,12 @@ impl Resonator {
         }
     }
 
+    #[must_use]
     pub fn frequency(&self) -> f64 {
         self.frequency
     }
 
+    #[must_use]
     pub fn bandwidth(&self) -> f64 {
         self.bandwidth
     }
@@ -87,6 +90,7 @@ impl Resonator {
     }
 
     /// Linear gain at a frequency in Hz.
+    #[must_use]
     pub fn frequency_response(&self, frequency: f64) -> f64 {
         self.coefficients
             .resonator_magnitude(frequency, self.sample_rate)
@@ -104,6 +108,7 @@ pub struct Antiresonator {
 }
 
 impl Antiresonator {
+    #[must_use]
     pub fn new(frequency: f64, bandwidth: f64, sample_rate: f64) -> Self {
         Self {
             sample_rate,
@@ -114,10 +119,12 @@ impl Antiresonator {
         }
     }
 
+    #[must_use]
     pub fn frequency(&self) -> f64 {
         self.frequency
     }
 
+    #[must_use]
     pub fn bandwidth(&self) -> f64 {
         self.bandwidth
     }
@@ -147,6 +154,7 @@ impl Antiresonator {
     }
 
     /// Linear gain at a frequency in Hz.
+    #[must_use]
     pub fn frequency_response(&self, frequency: f64) -> f64 {
         1.0 / self
             .coefficients
@@ -162,6 +170,7 @@ pub struct Cascade {
 
 impl Cascade {
     /// Builds a cascade from `(frequency, bandwidth)` pairs.
+    #[must_use]
     pub fn new(formants: &[(f64, f64)], sample_rate: f64) -> Self {
         let resonators = formants
             .iter()
@@ -170,6 +179,7 @@ impl Cascade {
         Self { resonators }
     }
 
+    #[must_use]
     pub fn resonators(&self) -> &[Resonator] {
         &self.resonators
     }
@@ -193,6 +203,7 @@ impl Cascade {
     }
 
     /// Linear gain at a frequency in Hz.
+    #[must_use]
     pub fn frequency_response(&self, frequency: f64) -> f64 {
         self.resonators
             .iter()

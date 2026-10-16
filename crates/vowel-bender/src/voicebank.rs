@@ -23,6 +23,10 @@ pub struct Voicebank {
 
 impl Voicebank {
     /// Writes 16-bit mono wavs, a UTF-8 oto.ini, character.txt, and a character.yaml that tells OpenUtau to read them as UTF-8.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a file cannot be written.
     pub fn write(&self, directory: &Path) -> io::Result<()> {
         fs::create_dir_all(directory)?;
 
@@ -51,6 +55,10 @@ impl Voicebank {
 }
 
 /// Writes 16-bit mono audio, clipping samples outside −1 to 1.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be written.
 pub fn write_wav(path: &Path, audio: &[f64], sample_rate: u32) -> io::Result<()> {
     let specification = hound::WavSpec {
         channels: 1,
@@ -60,6 +68,10 @@ pub fn write_wav(path: &Path, audio: &[f64], sample_rate: u32) -> io::Result<()>
     };
     let mut writer = hound::WavWriter::create(path, specification).map_err(io::Error::other)?;
     for &sample in audio {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the sample is clamped to the i16 range first"
+        )]
         let scaled = (sample.clamp(-1.0, 1.0) * f64::from(i16::MAX)).round() as i16;
         writer.write_sample(scaled).map_err(io::Error::other)?;
     }
@@ -68,6 +80,10 @@ pub fn write_wav(path: &Path, audio: &[f64], sample_rate: u32) -> io::Result<()>
 
 /// Reads a wav as samples from −1 to 1, keeping only the first channel.
 /// Returns the samples and the sample rate.
+///
+/// # Errors
+///
+/// Returns an error when the file cannot be read or is not a valid wav.
 pub fn read_wav(path: &Path) -> io::Result<(Vec<f64>, u32)> {
     let mut reader = hound::WavReader::open(path).map_err(io::Error::other)?;
     let specification = reader.spec();

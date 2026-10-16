@@ -23,6 +23,7 @@ pub enum Encoding {
 
 impl Encoding {
     /// Picks UTF-8 when the bytes start with a byte order mark or are valid UTF-8, and Shift-JIS otherwise.
+    #[must_use]
     pub fn detect(bytes: &[u8]) -> Self {
         if bytes.starts_with(BYTE_ORDER_MARK) || std::str::from_utf8(bytes).is_ok() {
             Encoding::Utf8
@@ -111,6 +112,7 @@ impl OtoEntry {
     }
 
     /// Where the sample ends, in milliseconds from the start of a file `file_length` milliseconds long.
+    #[must_use]
     pub fn end(&self, file_length: f64) -> f64 {
         if self.cutoff < 0.0 {
             self.offset - self.cutoff
@@ -141,11 +143,13 @@ pub struct OtoLine {
 
 impl OtoLine {
     /// The line's bytes as read, without its line ending.
+    #[must_use]
     pub fn raw(&self) -> &[u8] {
         &self.raw
     }
 
     /// The parsed entry, or `None` for blank or malformed lines.
+    #[must_use]
     pub fn entry(&self) -> Option<&OtoEntry> {
         self.entry.as_ref()
     }
@@ -200,6 +204,7 @@ pub struct OtoFile {
 }
 
 impl OtoFile {
+    #[must_use]
     pub fn new(encoding: Encoding) -> Self {
         Self {
             encoding,
@@ -209,6 +214,7 @@ impl OtoFile {
     }
 
     /// Parses an oto.ini, detecting its encoding when `encoding` is `None`.
+    #[must_use]
     pub fn parse(bytes: &[u8], encoding: Option<Encoding>) -> Self {
         let encoding = encoding.unwrap_or_else(|| Encoding::detect(bytes));
         let has_byte_order_mark = encoding == Encoding::Utf8 && bytes.starts_with(BYTE_ORDER_MARK);
@@ -257,18 +263,26 @@ impl OtoFile {
         }
     }
 
+    /// Reads and parses an oto.ini, detecting its encoding when `encoding` is `None`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read.
     pub fn read(path: &Path, encoding: Option<Encoding>) -> io::Result<Self> {
         Ok(Self::parse(&fs::read(path)?, encoding))
     }
 
+    #[must_use]
     pub fn encoding(&self) -> Encoding {
         self.encoding
     }
 
+    #[must_use]
     pub fn has_byte_order_mark(&self) -> bool {
         self.has_byte_order_mark
     }
 
+    #[must_use]
     pub fn lines(&self) -> &[OtoLine] {
         &self.lines
     }
@@ -278,6 +292,7 @@ impl OtoFile {
     }
 
     /// Indices of lines that are neither blank nor a valid entry.
+    #[must_use]
     pub fn unparsed_line_indices(&self) -> Vec<usize> {
         self.lines
             .iter()
@@ -309,6 +324,11 @@ impl OtoFile {
         });
     }
 
+    /// Encodes the file, keeping the original bytes of every unedited line.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OtoError::Unencodable`] when an edited line holds a character the file's encoding cannot represent.
     pub fn to_bytes(&self) -> Result<Vec<u8>, OtoError> {
         let mut bytes = Vec::new();
         if self.has_byte_order_mark {
@@ -333,6 +353,11 @@ impl OtoFile {
         Ok(bytes)
     }
 
+    /// Encodes the file and writes it to `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when an edited line cannot be encoded or the file cannot be written.
     pub fn write(&self, path: &Path) -> Result<(), OtoError> {
         fs::write(path, self.to_bytes()?)?;
         Ok(())

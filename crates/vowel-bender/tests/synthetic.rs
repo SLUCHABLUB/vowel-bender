@@ -11,13 +11,14 @@ fn written_bank_is_consistent() {
     let oto_bytes = std::fs::read(directory.path().join("oto.ini")).unwrap();
     let oto = OtoFile::parse(&oto_bytes, None);
     assert_eq!(oto.to_bytes().unwrap(), oto_bytes);
-    assert!(oto.unparsed_line_indices().is_empty());
+    assert_eq!(oto.unparsed_line_indices(), Vec::<usize>::new());
     assert_eq!(oto.entries().count(), bank.voicebank.samples.len());
 
     for entry in oto.entries() {
         let (audio, sample_rate) = read_wav(&directory.path().join(&entry.file_name)).unwrap();
         assert_eq!(sample_rate, 44_100);
-        let file_length = audio.len() as f64 * 1000.0 / f64::from(sample_rate);
+        let file_length =
+            f64::from(u32::try_from(audio.len()).unwrap()) * 1000.0 / f64::from(sample_rate);
         let end = entry.end(file_length);
         assert!(entry.offset >= 0.0, "{}", entry.alias);
         assert!(entry.overlap < entry.preutterance, "{}", entry.alias);

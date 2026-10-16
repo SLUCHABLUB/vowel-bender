@@ -38,6 +38,7 @@ impl VowelFormants {
 
 /// Typical adult male values for the five Japanese vowels.
 /// Japanese u is unrounded and compressed, so its F2 sits higher than a rounded u's.
+#[must_use]
 pub fn japanese_vowels() -> Vec<(&'static str, VowelFormants)> {
     let vowel = |formants, bandwidths| VowelFormants {
         formants,
@@ -192,6 +193,11 @@ pub struct SyntheticTruth {
 }
 
 impl SyntheticTruth {
+    /// Reads a truth file written by [`SyntheticBank::write`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file cannot be read or is not a valid truth file.
     pub fn read(path: &Path) -> io::Result<Self> {
         toml::from_str(&fs::read_to_string(path)?).map_err(io::Error::other)
     }
@@ -205,6 +211,10 @@ pub struct SyntheticBank {
 
 impl SyntheticBank {
     /// Writes the voicebank and its truth file into `directory`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a file cannot be written.
     pub fn write(&self, directory: &Path) -> io::Result<()> {
         self.voicebank.write(directory)?;
         let truth = toml::to_string(&self.truth).map_err(io::Error::other)?;
@@ -219,6 +229,7 @@ pub struct NoiseGenerator {
 }
 
 impl NoiseGenerator {
+    #[must_use]
     pub fn new(seed: u64) -> Self {
         // A zero state would stay zero forever.
         Self {
@@ -231,8 +242,9 @@ impl NoiseGenerator {
         self.state ^= self.state << 25;
         self.state ^= self.state >> 27;
         let value = self.state.wrapping_mul(0x2545_F491_4F6C_DD1D);
-        // The top 53 bits fill an f64 mantissa exactly.
-        (value >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
+        // The top 52 bits become the mantissa of a number from 1 to 2.
+        let one_to_two = f64::from_bits(0x3FF0_0000_0000_0000 | (value >> 12));
+        (one_to_two - 1.0) * 2.0 - 1.0
     }
 }
 
@@ -367,7 +379,16 @@ fn render(
     seed: u64,
 ) -> Vec<f64> {
     let rate = f64::from(sample_rate);
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "the length is positive and a few seconds long"
+    )]
     let sample_count = (layout.length * rate).round() as usize;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "sample indices stay far below 2^52"
+    )]
     let time = |index: usize| index as f64 / rate;
 
     let mut source = GlottalSource::new(fundamental_frequency, rate, seed);
@@ -452,11 +473,16 @@ fn render(
 /// Spreads samples across the pitch band so each vowel's samples cover it evenly.
 fn fundamental_frequency(settings: &SyntheticBankSettings, sample_index: usize) -> f64 {
     const GOLDEN_RATIO_CONJUGATE: f64 = 0.618_033_988_749_895;
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "sample indices stay far below 2^52"
+    )]
     let position = (sample_index as f64 * GOLDEN_RATIO_CONJUGATE).fract() - 0.5;
     settings.base_fundamental_frequency
         * 2.0_f64.powf(position * settings.pitch_spread_semitones / 12.0)
 }
 
+#[must_use]
 pub fn generate(settings: &SyntheticBankSettings) -> SyntheticBank {
     let vowels = japanese_vowels();
     let mut samples = Vec::new();
