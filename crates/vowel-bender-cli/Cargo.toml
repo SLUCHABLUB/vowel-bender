@@ -9,7 +9,9 @@ name = "vowel-bender"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
+fn-error-context.workspace = true
 vowel-bender.workspace = true
 
 [lints]
