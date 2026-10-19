@@ -44,6 +44,8 @@ pub fn japanese_vowels() -> Vec<(&'static str, VowelFormants)> {
         formants,
         bandwidths,
     };
+
+    // TODO: Where do these values come from?
     vec![
         (
             "a",
@@ -114,6 +116,7 @@ fn noise(
 }
 
 fn consonant_sound(consonant: &str) -> Option<ConsonantSound> {
+    // TODO: Where do these values come from?
     Some(match consonant {
         "k" => noise(0.04, 0.03, 2000.0, 1200.0, 0.3),
         "s" => noise(0.0, 0.12, 6000.0, 2500.0, 0.2),
@@ -217,8 +220,11 @@ impl SyntheticBank {
     /// Returns an error when a file cannot be written.
     pub fn write(&self, directory: &Path) -> io::Result<()> {
         self.voicebank.write(directory)?;
+
         let truth = toml::to_string(&self.truth).map_err(io::Error::other)?;
-        fs::write(directory.join(TRUTH_FILE_NAME), truth)
+        fs::write(directory.join(TRUTH_FILE_NAME), truth)?;
+
+        Ok(())
     }
 }
 
@@ -334,8 +340,10 @@ impl Layout {
 
     fn oto_entry(&self, file_name: String, alias: String, has_consonant: bool) -> OtoEntry {
         let milliseconds = |seconds: f64| (seconds * 1000.0).round();
+
         let offset = milliseconds(self.consonant_start) - 30.0;
         let preutterance = milliseconds(self.vowel_start) - offset;
+
         OtoEntry {
             file_name,
             alias,
@@ -362,7 +370,11 @@ fn envelope(time: f64, start: f64, attack: f64, end: f64, release: f64) -> f64 {
 fn normalize(signal: &mut [f64], level: f64) {
     let peak = signal
         .iter()
-        .fold(0.0_f64, |peak, sample| peak.max(sample.abs()));
+        .copied()
+        .map(f64::abs)
+        .reduce(f64::max)
+        .unwrap_or(0.0);
+
     if peak > 0.0 {
         for sample in signal {
             *sample *= level / peak;
@@ -392,7 +404,7 @@ fn render(
     let time = |index: usize| index as f64 / rate;
 
     let mut source = GlottalSource::new(fundamental_frequency, rate, seed);
-    let glottal: Vec<f64> = (0..sample_count).map(|_| source.next_sample()).collect();
+    let glottal: Vec<_> = (0..sample_count).map(|_| source.next_sample()).collect();
 
     // A consonant hands over to the vowel with a crossfade, a bare vowel starts with a plain attack.
     let vowel_attack = if consonant.is_some() {
@@ -400,6 +412,7 @@ fn render(
     } else {
         VOWEL_ATTACK
     };
+
     let mut tract = Cascade::new(&vowel.pairs(), rate);
     let mut output: Vec<f64> = glottal
         .iter()
@@ -446,6 +459,7 @@ fn render(
         }) => {
             let mut murmur = Resonator::new(250.0, 100.0, rate);
             let mut antiresonance = Antiresonator::new(antiresonance_frequency, 200.0, rate);
+
             let mut part: Vec<f64> = glottal
                 .iter()
                 .enumerate()
@@ -461,12 +475,15 @@ fn render(
                 })
                 .collect();
             normalize(&mut part, NASAL_LEVEL);
+
             part
         }
     };
+
     for (sample, consonant_sample) in output.iter_mut().zip(consonant_part) {
         *sample += consonant_sample;
     }
+
     output
 }
 
