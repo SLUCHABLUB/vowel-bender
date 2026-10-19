@@ -122,16 +122,12 @@ fn main() -> anyhow::Result<()> {
             println!("Lines: {}", oto.lines().len());
             println!("Entries: {}", oto.entries().count());
 
-            let unparsed = oto.unparsed_line_indices();
+            let unparsed: Vec<_> = oto.unparsed_lines().collect();
 
             println!("Unparsed lines: {}", unparsed.len());
 
-            for line_index in unparsed {
-                println!(
-                    "  {}: {}",
-                    line_index + 1,
-                    String::from_utf8_lossy(oto.lines()[line_index].raw())
-                );
+            for (index, line) in unparsed.into_iter().enumerate() {
+                println!("  {}: {}", index + 1, String::from_utf8_lossy(line.raw()));
             }
 
             let identical = oto.to_bytes().is_ok_and(|written| written == original);

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use vowel_bender::oto::{Encoding, OtoEntry, OtoError, OtoFile};
+use vowel_bender::oto::{Encoding, OtoEntry, OtoError, OtoFile, OtoLine};
 
 fn shift_jis(text: &str) -> Vec<u8> {
     let (bytes, _, had_errors) = encoding_rs::SHIFT_JIS.encode(text);
@@ -32,7 +32,10 @@ fn shift_jis_round_trip_is_identical() {
     assert_eq!(oto.to_bytes().unwrap(), original);
     assert_eq!(oto.lines().len(), 7);
     assert_eq!(oto.entries().count(), 5);
-    assert_eq!(oto.unparsed_line_indices(), vec![4]);
+    assert_eq!(
+        oto.unparsed_lines().map(OtoLine::raw).collect::<Vec<_>>(),
+        vec![b"this line is not an entry"]
+    );
 }
 
 #[test]

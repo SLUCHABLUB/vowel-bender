@@ -5,15 +5,13 @@
 //! That makes an unedited round trip byte-identical,
 //! even for characters a Shift-JIS decode and re-encode would not preserve.
 
+use std::borrow::Cow;
 use std::fmt;
 use std::fs;
 use std::io;
 use std::path::Path;
 
-const BYTE_ORDER_MARK: &[u8] = b"\xEF\xBB\xBF";
-
-/// The line ending used for lines this module adds, as UTAU tools expect.
-const DEFAULT_LINE_ENDING: &[u8] = b"\r\n";
+const BYTE_ORDER_MARK: &[u8] = "\u{FEFF}".as_bytes();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Encoding {
@@ -32,27 +30,30 @@ impl Encoding {
         }
     }
 
-    fn decode(self, bytes: &[u8]) -> String {
+    fn decode(self, bytes: &[u8]) -> Cow<'_, str> {
         match self {
-            Encoding::ShiftJis => encoding_rs::SHIFT_JIS
-                .decode_without_bom_handling(bytes)
-                .0
-                .into_owned(),
-            Encoding::Utf8 => String::from_utf8_lossy(bytes).into_owned(),
+            Encoding::ShiftJis => {
+                let (string, _error) = encoding_rs::SHIFT_JIS.decode_without_bom_handling(bytes);
+
+                string
+            }
+            Encoding::Utf8 => String::from_utf8_lossy(bytes),
         }
     }
 
     fn encode(self, text: &str) -> Option<Vec<u8>> {
         match self {
             Encoding::ShiftJis => {
-                let (bytes, _, had_errors) = encoding_rs::SHIFT_JIS.encode(text);
-                (!had_errors).then(|| bytes.into_owned())
+                let (bytes, _, error) = encoding_rs::SHIFT_JIS.encode(text);
+
+                (!error).then(|| bytes.into_owned())
             }
             Encoding::Utf8 => Some(text.as_bytes().to_vec()),
         }
     }
 }
 
+// TODO: Derive this.
 impl fmt::Display for Encoding {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -81,12 +82,16 @@ pub struct OtoEntry {
 }
 
 impl OtoEntry {
+    // TODO: Improve the error handling.
     fn parse(text: &str) -> Option<Self> {
         let (file_name, fields) = text.split_once('=')?;
+
         let fields: Vec<&str> = fields.split(',').collect();
+
         let [alias, offset, consonant, cutoff, preutterance, overlap] = fields.as_slice() else {
             return None;
         };
+
         Some(Self {
             file_name: file_name.to_string(),
             alias: alias.to_string(),
@@ -98,19 +103,21 @@ impl OtoEntry {
         })
     }
 
+    // TODO: Use display.
     fn format(&self) -> String {
-        format!(
-            "{}={},{},{},{},{},{}",
-            self.file_name,
-            self.alias,
-            self.offset,
-            self.consonant,
-            self.cutoff,
-            self.preutterance,
-            self.overlap
-        )
+        let OtoEntry {
+            file_name,
+            alias,
+            offset,
+            consonant,
+            cutoff,
+            preutterance,
+            overlap,
+        } = self;
+        format!("{file_name}={alias},{offset},{consonant},{cutoff},{preutterance},{overlap}")
     }
 
+    // TODO: Use new-types for quantities.
     /// Where the sample ends, in milliseconds from the start of a file `file_length` milliseconds long.
     #[must_use]
     pub fn end(&self, file_length: f64) -> f64 {
@@ -125,6 +132,7 @@ impl OtoEntry {
 /// Empty time fields occur in hand-edited files and mean zero.
 fn parse_time(field: &str) -> Option<f64> {
     let field = field.trim();
+
     if field.is_empty() {
         Some(0.0)
     } else {
@@ -135,8 +143,9 @@ fn parse_time(field: &str) -> Option<f64> {
 /// One line of an oto.ini, with its original bytes.
 #[derive(Debug, Clone)]
 pub struct OtoLine {
+    // TODO: Why is this here.
     raw: Vec<u8>,
-    line_ending: Vec<u8>,
+    line_ending: LineEnding,
     entry: Option<OtoEntry>,
     modified: bool,
 }
@@ -159,6 +168,30 @@ impl OtoLine {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+enum LineEnding {
+    None,
+    LineFeed,
+    // Utau apparently expect these, so have them as the default.
+    #[default]
+    CarriageReturnLineFeed,
+}
+
+impl LineEnding {
+    fn is_none(self) -> bool {
+        self == LineEnding::None
+    }
+
+    fn as_bytes(self) -> &'static [u8] {
+        match self {
+            LineEnding::None => b"",
+            LineEnding::LineFeed => b"\n",
+            LineEnding::CarriageReturnLineFeed => b"\r\n",
+        }
+    }
+}
+
+// TODO: Use thiserror.
 #[derive(Debug)]
 pub enum OtoError {
     Io(io::Error),
@@ -217,7 +250,9 @@ impl OtoFile {
     #[must_use]
     pub fn parse(bytes: &[u8], encoding: Option<Encoding>) -> Self {
         let encoding = encoding.unwrap_or_else(|| Encoding::detect(bytes));
+
         let has_byte_order_mark = encoding == Encoding::Utf8 && bytes.starts_with(BYTE_ORDER_MARK);
+
         let body = if has_byte_order_mark {
             &bytes[BYTE_ORDER_MARK.len()..]
         } else {
@@ -227,32 +262,40 @@ impl OtoFile {
         // Shift-JIS trail bytes are never 0x0A or 0x0D, so splitting on raw bytes is safe in both encodings.
         let mut lines = Vec::new();
         let mut remaining = body;
+
         while !remaining.is_empty() {
-            let (line, line_ending, rest) = match remaining.iter().position(|&byte| byte == b'\n') {
-                Some(newline) => {
-                    let ending_start = if newline > 0 && remaining[newline - 1] == b'\r' {
-                        newline - 1
-                    } else {
-                        newline
-                    };
-                    (
-                        &remaining[..ending_start],
-                        &remaining[ending_start..=newline],
-                        &remaining[newline + 1..],
-                    )
+            let newline_index = remaining.iter().position(|&byte| byte == b'\n');
+
+            let line: &[u8];
+            let line_ending: LineEnding;
+            let rest: &[u8];
+
+            if let Some(mut newline_index) = newline_index {
+                rest = &remaining[newline_index + 1..];
+
+                let carriage_return = newline_index > 0 && remaining[newline_index - 1] == b'\r';
+
+                if carriage_return {
+                    newline_index -= 1;
+                    line_ending = LineEnding::CarriageReturnLineFeed;
+                } else {
+                    line_ending = LineEnding::LineFeed;
                 }
-                None => (
-                    remaining,
-                    &remaining[remaining.len()..],
-                    &remaining[remaining.len()..],
-                ),
-            };
+
+                line = &remaining[..newline_index];
+            } else {
+                line = remaining;
+                line_ending = LineEnding::None;
+                rest = &remaining[remaining.len()..];
+            }
+
             lines.push(OtoLine {
                 raw: line.to_vec(),
-                line_ending: line_ending.to_vec(),
+                line_ending,
                 entry: OtoEntry::parse(&encoding.decode(line)),
                 modified: false,
             });
+
             remaining = rest;
         }
 
@@ -268,7 +311,10 @@ impl OtoFile {
     /// # Errors
     ///
     /// Returns an error when the file cannot be read.
-    pub fn read(path: &Path, encoding: Option<Encoding>) -> io::Result<Self> {
+    pub fn read<P>(path: P, encoding: Option<Encoding>) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
         Ok(Self::parse(&fs::read(path)?, encoding))
     }
 
@@ -292,16 +338,13 @@ impl OtoFile {
     }
 
     /// Indices of lines that are neither blank nor a valid entry.
-    #[must_use]
-    pub fn unparsed_line_indices(&self) -> Vec<usize> {
+    pub fn unparsed_lines(&self) -> impl Iterator<Item = &OtoLine> {
         self.lines
             .iter()
-            .enumerate()
-            .filter(|(_, line)| line.entry.is_none() && !line.is_blank())
-            .map(|(index, _)| index)
-            .collect()
+            .filter(|line| line.entry.is_none() && !line.is_blank())
     }
 
+    // TODO: This panics.
     /// Replaces the line at `line_index` with an entry; it is encoded again when written.
     pub fn set_entry(&mut self, line_index: usize, entry: OtoEntry) {
         let line = &mut self.lines[line_index];
@@ -312,13 +355,14 @@ impl OtoFile {
     /// Appends an entry as a new line.
     pub fn push_entry(&mut self, entry: OtoEntry) {
         if let Some(last) = self.lines.last_mut()
-            && last.line_ending.is_empty()
+            && last.line_ending.is_none()
         {
-            last.line_ending = DEFAULT_LINE_ENDING.to_vec();
+            last.line_ending = LineEnding::default();
         }
+
         self.lines.push(OtoLine {
             raw: Vec::new(),
-            line_ending: DEFAULT_LINE_ENDING.to_vec(),
+            line_ending: LineEnding::default(),
             entry: Some(entry),
             modified: true,
         });
@@ -331,25 +375,30 @@ impl OtoFile {
     /// Returns [`OtoError::Unencodable`] when an edited line holds a character the file's encoding cannot represent.
     pub fn to_bytes(&self) -> Result<Vec<u8>, OtoError> {
         let mut bytes = Vec::new();
+
         if self.has_byte_order_mark {
             bytes.extend_from_slice(BYTE_ORDER_MARK);
         }
+
         for (line_index, line) in self.lines.iter().enumerate() {
-            match (&line.entry, line.modified) {
-                (Some(entry), true) => {
-                    let encoded =
-                        self.encoding
-                            .encode(&entry.format())
-                            .ok_or(OtoError::Unencodable {
-                                line_index,
-                                encoding: self.encoding,
-                            })?;
-                    bytes.extend_from_slice(&encoded);
-                }
-                _ => bytes.extend_from_slice(&line.raw),
+            if let Some(entry) = &line.entry
+                && line.modified
+            {
+                let encoded =
+                    self.encoding
+                        .encode(&entry.format())
+                        .ok_or(OtoError::Unencodable {
+                            line_index,
+                            encoding: self.encoding,
+                        })?;
+                bytes.extend_from_slice(&encoded);
+            } else {
+                bytes.extend_from_slice(&line.raw);
             }
-            bytes.extend_from_slice(&line.line_ending);
+
+            bytes.extend_from_slice(line.line_ending.as_bytes());
         }
+
         Ok(bytes)
     }
 

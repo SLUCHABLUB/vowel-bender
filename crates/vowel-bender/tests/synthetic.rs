@@ -11,7 +11,7 @@ fn written_bank_is_consistent() {
     let oto_bytes = std::fs::read(directory.path().join("oto.ini")).unwrap();
     let oto = OtoFile::parse(&oto_bytes, None);
     assert_eq!(oto.to_bytes().unwrap(), oto_bytes);
-    assert_eq!(oto.unparsed_line_indices(), Vec::<usize>::new());
+    assert_eq!(oto.unparsed_lines().count(), 0);
     assert_eq!(oto.entries().count(), bank.voicebank.samples.len());
 
     for entry in oto.entries() {
