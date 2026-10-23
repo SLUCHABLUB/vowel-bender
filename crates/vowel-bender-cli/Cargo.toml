@@ -7,11 +7,14 @@ license-file.workspace = true
 [[bin]]
 name = "vowel-bender"
 path = "src/main.rs"
+# The library has the same name, and both would be documented at target/doc/vowel_bender.
+doc = false
 
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
 fn-error-context.workspace = true
+fs-err.workspace = true
 vowel-bender.workspace = true
 
 [lints]

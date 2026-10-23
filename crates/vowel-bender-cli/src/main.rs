@@ -1,11 +1,11 @@
-// TODO: We should use something like fs-err.
-use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use fn_error_context::context;
+use fs_err as fs;
 use vowel_bender::oto::{Encoding, OtoFile};
+use vowel_bender::quantity::{Frequency, Interval};
 use vowel_bender::synthetic::{self, SyntheticBankSettings};
 
 #[derive(Parser)]
@@ -26,8 +26,9 @@ enum Command {
         #[arg(long)]
         output: PathBuf,
         /// Centre of the pitch band, as a note name such as A3 or C#4.
-        #[arg(long, default_value = "A3", value_parser = note_to_frequency)]
-        pitch: f64,
+        /// The default is near the mean pitch of the speakers whose formants the bank uses.
+        #[arg(long, default_value = "D3", value_parser = note_to_frequency)]
+        pitch: Frequency,
     },
     /// Parses an oto.ini and checks that writing it back gives identical bytes.
     OtoCheck {
@@ -55,7 +56,7 @@ impl From<EncodingArgument> for Encoding {
 
 /// Converts a note name such as A4, C#4 or Bb3 to Hz, with A4 at 440 Hz.
 #[context("parsing `{note}` as a note")]
-fn note_to_frequency(note: &str) -> anyhow::Result<f64> {
+fn note_to_frequency(note: &str) -> anyhow::Result<Frequency> {
     let semitone_in_octave = match note
         .chars()
         .next()
@@ -83,9 +84,9 @@ fn note_to_frequency(note: &str) -> anyhow::Result<f64> {
     let octave: i32 = octave.parse().context("parsing the octave")?;
 
     let semitones_from_a4 = (octave - 4) * 12 + semitone_in_octave + accidental - 9;
-    let octaves_from_a4 = f64::from(semitones_from_a4) / 12.0;
+    let interval_from_a4 = Interval::from_semitones(f64::from(semitones_from_a4));
 
-    let frequency = 440.0 * f64::powf(2.0, octaves_from_a4);
+    let frequency = Frequency::from_hertz(440.0) * interval_from_a4;
 
     Ok(frequency)
 }
@@ -103,7 +104,7 @@ fn main() -> anyhow::Result<()> {
             bank.write(&output)?;
 
             println!(
-                "Wrote {} samples around {pitch:.1} Hz to {}",
+                "Wrote {} samples around {pitch:.1} to {}",
                 bank.voicebank.samples.len(),
                 output.display()
             );
@@ -126,8 +127,15 @@ fn main() -> anyhow::Result<()> {
 
             println!("Unparsed lines: {}", unparsed.len());
 
-            for (index, line) in unparsed.into_iter().enumerate() {
-                println!("  {}: {}", index + 1, String::from_utf8_lossy(line.raw()));
+            for (line_number, line) in unparsed {
+                let text = String::from_utf8_lossy(line.original_bytes().unwrap_or_default());
+                let reason = line
+                    .parse_error()
+                    .map(ToString::to_string)
+                    .unwrap_or_default();
+
+                println!("  {line_number}: {text}");
+                println!("    {reason}");
             }
 
             let identical = oto.to_bytes().is_ok_and(|written| written == original);
@@ -149,8 +157,11 @@ mod tests {
 
     #[test]
     fn note_names_convert_to_frequency() {
-        let close =
-            |note: &str, expected: f64| (note_to_frequency(note).unwrap() - expected).abs() < 0.01;
+        let close = |note: &str, expected: f64| {
+            let frequency = note_to_frequency(note).unwrap();
+
+            (frequency.hertz() - expected).abs() < 0.01
+        };
         assert!(close("A4", 440.0));
         assert!(close("A3", 220.0));
         assert!(close("C4", 261.63));

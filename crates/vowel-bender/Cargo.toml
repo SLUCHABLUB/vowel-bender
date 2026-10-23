@@ -5,9 +5,15 @@ edition.workspace = true
 license-file.workspace = true
 
 [dependencies]
+derive_more.workspace = true
 encoding_rs.workspace = true
+fs-err.workspace = true
 hound.workspace = true
+num-complex.workspace = true
+rand.workspace = true
+rand_xoshiro.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 toml.workspace = true
 
 [dev-dependencies]

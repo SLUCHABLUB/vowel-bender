@@ -2,5 +2,6 @@
 
 pub mod filter;
 pub mod oto;
+pub mod quantity;
 pub mod synthetic;
 pub mod voicebank;
